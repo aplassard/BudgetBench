@@ -1,9 +1,6 @@
-"""Evaluate a couple of HumanEval+ problems using the official library."""
+"""Evaluate a couple of HumanEval problems using the official library."""
 
 import pytest
-
-datasets = pytest.importorskip("datasets")
-human_eval = pytest.importorskip("human_eval.execution")
 
 from datasets import load_dataset
 from budgetbench.evaluator import evaluate
@@ -11,36 +8,40 @@ from budgetbench.evaluator import evaluate
 
 @pytest.fixture(scope="session")
 def problems():
-    try:
-        ds = load_dataset("openai_humaneval_plus", split="test")
-    except Exception as exc:  # pragma: no cover - dataset may be unavailable
-        pytest.skip(f"loading dataset failed: {exc}")
+    ds = load_dataset("openai/openai_humaneval", split="test")
 
-    def find(keyword: str):
+    def by_task(task_id: str):
         for prob in ds:
-            if keyword.lower() in prob["prompt"].lower():
+            if prob["task_id"] == task_id:
                 return prob
-        raise ValueError(f"problem with keyword {keyword!r} not found")
+        raise ValueError(f"problem {task_id!r} not found")
 
     return {
-        "palindrome": find("palindrome"),
-        "fizzbuzz": find("fizzbuzz"),
+        "palindrome": by_task("HumanEval/10"),
+        "fizz_buzz": by_task("HumanEval/36"),
     }
 
 
-def test_palindrome(problems):
+def test_make_palindrome(problems):
     problem = problems["palindrome"]
     correct = """
-def is_palindrome(s: str) -> bool:
-    return s == s[::-1]
+
+def make_palindrome(s: str) -> str:
+    for i in range(len(s)):
+        suffix = s[i:]
+        if suffix == suffix[::-1]:
+            return s + s[:i][::-1]
+    return s + s[::-1]
 """
     partial = """
-def is_palindrome(s: str) -> bool:
-    return bool(s) and s == s[::-1]
+
+def make_palindrome(s: str) -> str:
+    return s + s[::-1]
 """
     wrong = """
-def is_palindrome(s: str) -> bool:
-    return False
+
+def make_palindrome(s: str) -> str:
+    return "not a palindrome"
 """
     passed, total = evaluate(problem, correct)
     assert passed == total
@@ -50,41 +51,22 @@ def is_palindrome(s: str) -> bool:
     assert passed == 0
 
 
-def test_fizzbuzz(problems):
-    problem = problems["fizzbuzz"]
+def test_fizz_buzz(problems):
+    problem = problems["fizz_buzz"]
     correct = """
-from typing import List
 
-def fizz_buzz(n: int) -> List[str]:
-    out = []
-    for i in range(1, n + 1):
-        if i % 15 == 0:
-            out.append("FizzBuzz")
-        elif i % 3 == 0:
-            out.append("Fizz")
-        elif i % 5 == 0:
-            out.append("Buzz")
-        else:
-            out.append(str(i))
-    return out
+def fizz_buzz(n: int) -> int:
+    return sum(str(i).count('7') for i in range(n) if i % 11 == 0 or i % 13 == 0)
 """
     partial = """
-from typing import List
 
-def fizz_buzz(n: int) -> List[str]:
-    out = []
-    for i in range(1, n + 1):
-        if i % 3 == 0:
-            out.append("Fizz")
-        else:
-            out.append(str(i))
-    return out
+def fizz_buzz(n: int) -> int:
+    return sum(1 for i in range(n) if (i % 11 == 0 or i % 13 == 0) and '7' in str(i))
 """
     wrong = """
-from typing import List
 
-def fizz_buzz(n: int) -> List[str]:
-    return []
+def fizz_buzz(n: int) -> int:
+    return -1
 """
     passed, total = evaluate(problem, correct)
     assert passed == total
@@ -92,4 +74,3 @@ def fizz_buzz(n: int) -> List[str]:
     assert 0 < passed < total
     passed, total = evaluate(problem, wrong)
     assert passed == 0
-
