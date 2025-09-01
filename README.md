@@ -17,9 +17,12 @@ The included tests download the ``openai/openai_humaneval`` dataset and evaluate
 
 ### LLM integration tests
 
-Integration tests exercise an OpenAI-compatible LLM provider and require these environment variables to be set **or the tests will fail**:
+Integration tests exercise an OpenAI-compatible LLM provider. They load missing
+values from a local `.env` file and require `OPENAI_API_KEY` to be set
+**otherwise the tests will fail**. `OPENAI_BASE_URL` may be provided to target a
+different endpoint (for example, `https://openrouter.ai/api/v1`); if omitted the
+official OpenAI endpoint is used.
 
-* `OPENAI_BASE_URL` – API endpoint (e.g. `https://openrouter.ai/api/v1`).
-* `OPENAI_API_KEY` – secret API token.
-
-The tests default to the `openai/gpt-oss-20b` model. The CI workflow sets `OPENAI_BASE_URL` to `https://openrouter.ai/api/v1`, `MODEL_NAME` to `openai/gpt-oss-20b`, and expects `OPENAI_API_KEY` to be supplied via a repository secret of the same name.
+The tests default to the `openai/gpt-oss-20b` model. The CI workflow sets
+`MODEL_NAME` to `openai/gpt-oss-20b` and expects `OPENAI_API_KEY` to be supplied
+via a repository secret of the same name.
