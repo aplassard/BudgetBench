@@ -3,15 +3,17 @@
 import os
 
 import pytest
+from dotenv import load_dotenv
 
 from budgetbench.llm import chat_completion
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(
-    not os.getenv("OPENAI_API_KEY") or not os.getenv("OPENAI_BASE_URL"),
-    reason="OPENAI_API_KEY and OPENAI_BASE_URL must be set for integration test",
-)
 def test_openai_hello_world():
+    if not os.getenv("OPENAI_API_KEY") or not os.getenv("OPENAI_BASE_URL"):
+        load_dotenv()
+    if not os.getenv("OPENAI_API_KEY"):
+        pytest.fail("OPENAI_API_KEY must be set for integration test")
     result = chat_completion("Say hello world")
-    assert "hello world" in result.lower()
+    normalized = result.lower().replace(",", "")
+    assert "hello world" in normalized

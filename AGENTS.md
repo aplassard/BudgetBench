@@ -11,8 +11,11 @@
   - Network access to `huggingface.co` is required for dataset download.
 
 ## Tests
-- Run tests with:
-  - `uv run pytest`
+  - Run tests with:
+    - `uv run pytest` – run all tests (fails if `OPENAI_API_KEY` is unset)
+    - `uv run pytest -m integration` – run only integration tests
+    - `uv run pytest -m "not integration"` – run tests excluding integration
+  - Integration tests require `OPENAI_API_KEY`; `OPENAI_BASE_URL` is optional and defaults to the official OpenAI endpoint.
 - Tests rely on the official HumanEval evaluation utilities.
 
 ## Notes
