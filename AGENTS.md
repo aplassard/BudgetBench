@@ -12,7 +12,10 @@
 
 ## Tests
 - Run tests with:
-  - `uv run pytest`
+  - `uv run pytest` – run all tests (fails if `OPENAI_API_KEY` or `OPENAI_BASE_URL` are unset)
+  - `uv run pytest -m integration` – run only integration tests
+  - `uv run pytest -m "not integration"` – run tests excluding integration
+- Integration tests require `OPENAI_API_KEY` and `OPENAI_BASE_URL` to be set; otherwise they will fail.
 - Tests rely on the official HumanEval evaluation utilities.
 
 ## Notes
