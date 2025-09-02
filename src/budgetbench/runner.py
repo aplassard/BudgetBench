@@ -65,7 +65,8 @@ def run_humaneval_task(
     """
     dataset = load_dataset("openai/openai_humaneval", split="test")
     problem = next(p for p in dataset if p["task_id"] == task_id)
-    raw = chat_completion(problem["prompt"], model=model, max_tokens=max_tokens)
+    completion = chat_completion(problem["prompt"], model=model, max_tokens=max_tokens)
+    raw = completion["message"]
     code = _extract_code(raw)
     is_valid = _is_valid_python(code)
     has_valid_signature = _has_valid_signature(code, problem["prompt"], problem["entry_point"])
