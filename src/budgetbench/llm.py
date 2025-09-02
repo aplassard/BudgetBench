@@ -23,7 +23,11 @@ def _ensure_env() -> None:
         raise RuntimeError("Missing required environment variable: OPENAI_API_KEY")
 
 
-def chat_completion(prompt: str, model: str | None = None) -> str:
+def chat_completion(
+    prompt: str,
+    model: str | None = None,
+    max_tokens: int = 10_240,
+) -> str:
     """Return the assistant message for a prompt using OpenAI-compatible API."""
     _ensure_env()
     client_kwargs = {"api_key": os.environ["OPENAI_API_KEY"]}
@@ -34,6 +38,6 @@ def chat_completion(prompt: str, model: str | None = None) -> str:
     completion = client.chat.completions.create(
         model=model or MODEL_NAME,
         messages=[{"role": "user", "content": prompt}],
-        max_tokens=200,
+        max_tokens=max_tokens,
     )
     return completion.choices[0].message.content
