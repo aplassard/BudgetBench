@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from openai import OpenAI
 
+from .llm_cost import LLM_COSTS
+
 MODEL_NAME = os.getenv("MODEL_NAME", "openai/gpt-oss-20b")
 
 
@@ -27,17 +29,56 @@ def chat_completion(
     prompt: str,
     model: str | None = None,
     max_tokens: int = 10_240,
-) -> str:
-    """Return the assistant message for a prompt using OpenAI-compatible API."""
+) -> dict:
+    """Return the assistant message and token usage details.
+
+    The returned dictionary contains the assistant ``message`` along with ``usage``
+    statistics (prompt, cache, reasoning and completion tokens) and ``cost`` for
+    each token type when pricing information is available for ``model``.
+    """
     _ensure_env()
     client_kwargs = {"api_key": os.environ["OPENAI_API_KEY"]}
     base_url = os.getenv("OPENAI_BASE_URL")
     if base_url:
         client_kwargs["base_url"] = base_url
     client = OpenAI(**client_kwargs)
+    target_model = model or MODEL_NAME
     completion = client.chat.completions.create(
-        model=model or MODEL_NAME,
+        model=target_model,
         messages=[{"role": "user", "content": prompt}],
         max_tokens=max_tokens,
     )
-    return completion.choices[0].message.content
+
+    usage_obj = getattr(completion, "usage", None)
+    prompt_tokens = getattr(usage_obj, "prompt_tokens", 0) if usage_obj else 0
+    completion_tokens = getattr(usage_obj, "completion_tokens", 0) if usage_obj else 0
+    reasoning_tokens = getattr(usage_obj, "reasoning_tokens", 0) if usage_obj else 0
+    cache_tokens = 0
+    if usage_obj:
+        cache_tokens += getattr(usage_obj, "cache_creation_input_tokens", 0)
+        cache_tokens += getattr(usage_obj, "cache_read_input_tokens", 0)
+        prompt_details = getattr(usage_obj, "prompt_tokens_details", None)
+        if prompt_details:
+            cache_tokens += getattr(prompt_details, "cached_tokens", 0)
+
+    usage = {
+        "prompt_tokens": prompt_tokens,
+        "cache_tokens": cache_tokens,
+        "reasoning_tokens": reasoning_tokens,
+        "completion_tokens": completion_tokens,
+    }
+
+    costs = {"prompt": 0.0, "cache": 0.0, "reasoning": 0.0, "completion": 0.0, "total": 0.0}
+    cost_info = LLM_COSTS.get(target_model)
+    if cost_info:
+        costs["prompt"] = prompt_tokens * cost_info.prompt
+        costs["cache"] = cache_tokens * cost_info.cache
+        costs["reasoning"] = reasoning_tokens * cost_info.reasoning
+        costs["completion"] = completion_tokens * cost_info.completion
+        costs["total"] = sum(costs.values())
+
+    return {
+        "message": completion.choices[0].message.content,
+        "usage": usage,
+        "cost": costs,
+    }

@@ -15,5 +15,5 @@ def test_openai_hello_world():
     if not os.getenv("OPENAI_API_KEY"):
         pytest.fail("OPENAI_API_KEY must be set for integration test")
     result = chat_completion("Say hello world")
-    normalized = result.lower().replace(",", "")
+    normalized = result["message"].lower().replace(",", "")
     assert "hello world" in normalized
