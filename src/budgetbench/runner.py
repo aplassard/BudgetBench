@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import ast
+import json
 import re
-from typing import Any, Dict
+import uuid
+from pathlib import Path
+from typing import Any, Dict, Iterable
 
 from datasets import load_dataset
 
@@ -55,21 +58,26 @@ def run_humaneval_task(
     task_id: str,
     model: str,
     max_tokens: int = 10_240,
+    dataset: Iterable[Dict[str, Any]] | None = None,
 ) -> Dict[str, Any]:
     """Generate and evaluate a HumanEval task using ``model``.
 
-    The returned dictionary contains the raw LLM output (``raw``), the extracted
-    code (``code``), booleans for syntax validity (``is_valid``) and API
-    compliance (``has_valid_signature``), along with the evaluation results
-    (``passed`` and ``total``).
+    ``dataset`` may be provided to avoid repeated downloads when evaluating many
+    tasks. The returned dictionary contains the raw LLM output (``raw``), the
+    extracted code (``code``), booleans for syntax validity (``is_valid``) and
+    API compliance (``has_valid_signature``), along with the evaluation results
+    (``passed`` and ``total``) and token ``cost`` information.
     """
-    dataset = load_dataset("openai/openai_humaneval", split="test")
+    if dataset is None:
+        dataset = load_dataset("openai/openai_humaneval", split="test")
     problem = next(p for p in dataset if p["task_id"] == task_id)
     completion = chat_completion(problem["prompt"], model=model, max_tokens=max_tokens)
     raw = completion["message"]
     code = _extract_code(raw)
     is_valid = _is_valid_python(code)
-    has_valid_signature = _has_valid_signature(code, problem["prompt"], problem["entry_point"])
+    has_valid_signature = _has_valid_signature(
+        code, problem["prompt"], problem["entry_point"]
+    )
     passed, total = evaluate(problem, code)
     return {
         "raw": raw,
@@ -78,4 +86,70 @@ def run_humaneval_task(
         "has_valid_signature": has_valid_signature,
         "passed": passed,
         "total": total,
+        "cost": completion.get("cost", {}),
+    }
+
+
+def run_humaneval_until_budget(
+    model: str,
+    budget: float,
+    log_dir: Path = Path("logs"),
+    max_tokens: int = 10_240,
+) -> Dict[str, Any]:
+    """Run HumanEval tasks until ``budget`` (USD) is exhausted.
+
+    Tasks are attempted sequentially and repeatedly until either all tasks are
+    solved or the running cost exceeds ``budget``. Each attempt is logged as a
+    JSON file named with a UUID in ``log_dir`` containing the task identifier,
+    model name, raw LLM response, correctness flag and detailed cost
+    information.
+
+    The returned dictionary summarises the number of ``attempts``, how many were
+    ``correct`` and the ``total_cost`` spent.
+    """
+    dataset = load_dataset("openai/openai_humaneval", split="test")
+    tasks = [p["task_id"] for p in dataset]
+    unsolved = tasks.copy()
+    attempts = 0
+    total_cost = 0.0
+    solved = set()
+    log_dir.mkdir(parents=True, exist_ok=True)
+    idx = 0
+
+    while unsolved and total_cost < budget:
+        task_id = unsolved[idx]
+        attempts += 1
+        result = run_humaneval_task(
+            task_id, model=model, max_tokens=max_tokens, dataset=dataset
+        )
+        correct = result["passed"] == result["total"]
+        cost = float(result.get("cost", {}).get("total", 0.0))
+        total_cost += cost
+
+        log_id = uuid.uuid4()
+        log_data = {
+            "id": str(log_id),
+            "model": model,
+            "task_id": task_id,
+            "response": result["raw"],
+            "correct": correct,
+            "cost": result.get("cost", {}),
+        }
+        log_file = log_dir / f"{log_id}.json"
+        with log_file.open("w") as fh:
+            json.dump(log_data, fh)
+
+        if correct:
+            solved.add(task_id)
+            unsolved.pop(idx)
+            if not unsolved:
+                break
+            idx %= len(unsolved)
+        else:
+            idx = (idx + 1) % len(unsolved)
+
+    return {
+        "attempts": attempts,
+        "correct": len(solved),
+        "total_cost": total_cost,
     }
