@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable
 
 from datasets import load_dataset
+from tqdm.auto import tqdm
 
 from .llm import chat_completion
 from .evaluator import evaluate
@@ -95,6 +96,7 @@ def run_humaneval_until_budget(
     budget: float,
     log_dir: Path = Path("logs"),
     max_tokens: int = 10_240,
+    show_progress: bool = False,
 ) -> Dict[str, Any]:
     """Run HumanEval tasks until ``budget`` (USD) is exhausted.
 
@@ -103,6 +105,9 @@ def run_humaneval_until_budget(
     JSON file named with a UUID in ``log_dir`` containing the task identifier,
     model name, raw LLM response, correctness flag and detailed cost
     information.
+
+    When ``show_progress`` is ``True`` a ``tqdm`` progress bar is displayed
+    tracking how much of the budget has been spent.
 
     The returned dictionary summarises the number of ``attempts``, how many were
     ``correct`` and the ``total_cost`` spent.
@@ -117,39 +122,51 @@ def run_humaneval_until_budget(
     log_dir.mkdir(parents=True, exist_ok=True)
     idx = 0
 
-    while unsolved and total_cost < budget:
-        task_id = unsolved[idx]
-        attempts += 1
-        result = run_humaneval_task(
-            task_id, model=model, max_tokens=max_tokens, dataset=dataset
-        )
-        problem_stats[task_id]["attempts"] += 1
-        correct = result["passed"] == result["total"]
-        problem_stats[task_id]["correct"] = problem_stats[task_id]["correct"] or correct
-        cost = float(result.get("cost", {}).get("total", 0.0))
-        total_cost += cost
+    progress = None
+    if show_progress:
+        progress = tqdm(total=budget, unit="USD", desc="Budget spent")
 
-        log_id = uuid.uuid4()
-        log_data = {
-            "id": str(log_id),
-            "model": model,
-            "task_id": task_id,
-            "response": result["raw"],
-            "correct": correct,
-            "cost": result.get("cost", {}),
-        }
-        log_file = log_dir / f"{log_id}.json"
-        with log_file.open("w") as fh:
-            json.dump(log_data, fh)
+    try:
+        while unsolved and total_cost < budget:
+            task_id = unsolved[idx]
+            attempts += 1
+            result = run_humaneval_task(
+                task_id, model=model, max_tokens=max_tokens, dataset=dataset
+            )
+            problem_stats[task_id]["attempts"] += 1
+            correct = result["passed"] == result["total"]
+            problem_stats[task_id]["correct"] = (
+                problem_stats[task_id]["correct"] or correct
+            )
+            cost = float(result.get("cost", {}).get("total", 0.0))
+            total_cost += cost
+            if progress is not None:
+                progress.update(min(cost, budget - progress.n))
 
-        if correct:
-            solved.add(task_id)
-            unsolved.pop(idx)
-            if not unsolved:
-                break
-            idx %= len(unsolved)
-        else:
-            idx = (idx + 1) % len(unsolved)
+            log_id = uuid.uuid4()
+            log_data = {
+                "id": str(log_id),
+                "model": model,
+                "task_id": task_id,
+                "response": result["raw"],
+                "correct": correct,
+                "cost": result.get("cost", {}),
+            }
+            log_file = log_dir / f"{log_id}.json"
+            with log_file.open("w") as fh:
+                json.dump(log_data, fh)
+
+            if correct:
+                solved.add(task_id)
+                unsolved.pop(idx)
+                if not unsolved:
+                    break
+                idx %= len(unsolved)
+            else:
+                idx = (idx + 1) % len(unsolved)
+    finally:
+        if progress is not None:
+            progress.close()
 
     return {
         "attempts": attempts,
