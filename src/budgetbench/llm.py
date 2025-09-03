@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import os
+import time
+from json import JSONDecodeError
+
+import httpx
 from openai import OpenAI
 
 from .llm_cost import LLM_COSTS
@@ -43,11 +47,26 @@ def chat_completion(
         client_kwargs["base_url"] = base_url
     client = OpenAI(**client_kwargs)
     target_model = model or MODEL_NAME
-    completion = client.chat.completions.create(
-        model=target_model,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=max_tokens,
-    )
+    # ``openai`` occasionally returns malformed JSON or encounters transient
+    # network issues.  These manifest as ``JSONDecodeError`` or ``httpx``
+    # exceptions bubbling out of ``client.chat.completions.create``.  Instead of
+    # failing immediately, attempt a few simple retries with exponential
+    # backoff.  If all retries fail, surface a more helpful ``RuntimeError`` so
+    # callers don't see an opaque JSON decoding stack trace.
+    completion = None
+    for attempt in range(3):
+        try:
+            completion = client.chat.completions.create(
+                model=target_model,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=max_tokens,
+            )
+            break
+        except (JSONDecodeError, httpx.HTTPError) as exc:  # pragma: no cover - network
+            if attempt == 2:
+                raise RuntimeError("Failed to retrieve completion") from exc
+            time.sleep(2**attempt)
+    assert completion is not None  # for type checkers
 
     usage_obj = getattr(completion, "usage", None)
     prompt_tokens = getattr(usage_obj, "prompt_tokens", 0) if usage_obj else 0
