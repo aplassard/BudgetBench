@@ -11,7 +11,7 @@ jobs:
     env:
       OPENAI_BASE_URL: https://openrouter.ai/api/v1
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      MODEL_NAME: openai/gpt-oss-20B
+      MODEL_NAME: openai/gpt-oss-120B
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v1
