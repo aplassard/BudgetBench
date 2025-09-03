@@ -100,4 +100,30 @@ LLM_COSTS: dict[str, LLMCost] = {
         completion=0.000015,
         cache=0.0000003,
     ),
+    "deepseek/deepseek-chat-v3.1": LLMCost(
+        name="deepseek/deepseek-chat-v3.1",
+        prompt=0.0000002,
+        completion=0.0000008,
+    ),
+    "z-ai/glm-4.5v": LLMCost(
+        name="z-ai/glm-4.5v",
+        prompt=0.0000005,
+        completion=0.0000018,
+    ),
+    "mistralai/codestral-2508": LLMCost(
+        name="mistralai/codestral-2508",
+        prompt=0.0000003,
+        completion=0.0000009,
+    ),
+    "x-ai/grok-4": LLMCost(
+        name="x-ai/grok-4",
+        prompt=0.000003,
+        completion=0.000015,
+        cache=0.00000075,
+    ),
+    "deepseek/deepseek-r1-0528": LLMCost(
+        name="deepseek/deepseek-r1-0528",
+        prompt=0.0000001999188,
+        completion=0.000000800064,
+    ),
 }
