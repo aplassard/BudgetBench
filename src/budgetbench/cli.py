@@ -24,7 +24,10 @@ def main() -> None:
     args = parser.parse_args()
 
     summary = run_humaneval_until_budget(
-        model=args.model, budget=args.budget, log_dir=Path(args.log_dir)
+        model=args.model,
+        budget=args.budget,
+        log_dir=Path(args.log_dir),
+        show_progress=True,
     )
     print(
         f"Attempts: {summary['attempts']}\n"
