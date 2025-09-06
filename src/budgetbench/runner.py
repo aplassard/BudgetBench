@@ -16,6 +16,15 @@ from .llm import chat_completion
 from .evaluator import evaluate
 
 
+EXCLUDED_TASKS = {"HumanEval/151"}
+
+
+def load_humaneval_dataset() -> list[Dict[str, Any]]:
+    """Load the HumanEval dataset excluding known broken tasks."""
+    dataset = load_dataset("openai/openai_humaneval", split="test")
+    return [p for p in dataset if p["task_id"] not in EXCLUDED_TASKS]
+
+
 def _extract_code(text: str) -> str:
     """Extract Python code from an LLM response.
 
@@ -70,7 +79,9 @@ def run_humaneval_task(
     (``passed`` and ``total``) and token ``cost`` information.
     """
     if dataset is None:
-        dataset = load_dataset("openai/openai_humaneval", split="test")
+        dataset = load_humaneval_dataset()
+    else:
+        dataset = [p for p in dataset if p["task_id"] not in EXCLUDED_TASKS]
     problem = next(p for p in dataset if p["task_id"] == task_id)
     completion = chat_completion(problem["prompt"], model=model, max_tokens=max_tokens)
     raw = completion["message"]
@@ -112,7 +123,7 @@ def run_humaneval_until_budget(
     The returned dictionary summarises the number of ``attempts``, how many were
     ``correct`` and the ``total_cost`` spent.
     """
-    dataset = load_dataset("openai/openai_humaneval", split="test")
+    dataset = load_humaneval_dataset()
     tasks = [p["task_id"] for p in dataset]
     unsolved = tasks.copy()
     attempts = 0
