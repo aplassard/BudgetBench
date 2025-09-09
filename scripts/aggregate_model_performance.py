@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Aggregate HumanEval run logs into per-model CSV tables."""
+"""Aggregate HumanEval attempt logs into a long-form CSV table."""
 
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
 
-from budgetbench.aggregate import aggregate_runs, write_csv_tables
+from budgetbench.aggregate import collect_correct_milestones, write_milestones_csv
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Aggregate HumanEval model performance summaries."
+        description="Aggregate HumanEval attempt logs into CSV"
     )
     parser.add_argument(
         "--log-dir",
@@ -19,17 +19,17 @@ def main() -> None:
         help="Top-level log directory created by run_all_models.py",
     )
     parser.add_argument(
-        "--output-dir",
-        default=".",
-        help="Directory to write aggregated CSV tables",
+        "--output",
+        default="correct_attempts.csv",
+        help="Path to write aggregated CSV table",
     )
     args = parser.parse_args()
 
-    results = aggregate_runs(Path(args.log_dir))
-    if not results:
-        print("No completed runs found.")
+    milestones = collect_correct_milestones(Path(args.log_dir))
+    if not milestones:
+        print("No attempt logs found.")
         return
-    write_csv_tables(results, Path(args.output_dir))
+    write_milestones_csv(milestones, Path(args.output))
 
 
 if __name__ == "__main__":  # pragma: no cover - CLI entry point
