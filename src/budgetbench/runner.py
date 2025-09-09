@@ -25,6 +25,12 @@ def load_humaneval_dataset() -> list[Dict[str, Any]]:
     return [p for p in dataset if p["task_id"] not in EXCLUDED_TASKS]
 
 
+def load_gsm8k_dataset(split: str = "test") -> list[Dict[str, Any]]:
+    """Load the GSM8K dataset."""
+    dataset = load_dataset("gsm8k", "main", split=split)
+    return list(dataset)
+
+
 def _extract_code(text: str) -> str:
     """Extract Python code from an LLM response.
 
@@ -62,6 +68,14 @@ def _has_valid_signature(code: str, prompt: str, entry_point: str) -> bool:
             given_args = [arg.arg for arg in node.args.args]
             return given_args == expected_args
     return False
+
+
+def _extract_gsm8k_answer(text: str) -> str | None:
+    """Extract the final numeric answer from a GSM8K response."""
+    matches = re.findall(r"-?\d+(?:\.\d+)?", text)
+    if matches:
+        return matches[-1].strip()
+    return None
 
 
 def run_humaneval_task(
@@ -169,6 +183,103 @@ def run_humaneval_until_budget(
 
             if correct:
                 solved.add(task_id)
+                unsolved.pop(idx)
+                if not unsolved:
+                    break
+                idx %= len(unsolved)
+            else:
+                idx = (idx + 1) % len(unsolved)
+    finally:
+        if progress is not None:
+            progress.close()
+
+    return {
+        "attempts": attempts,
+        "correct": len(solved),
+        "total_cost": total_cost,
+        "per_problem": problem_stats,
+    }
+
+
+def run_gsm8k_task(
+    index: int,
+    model: str,
+    max_tokens: int = 1024,
+    dataset: Iterable[Dict[str, Any]] | None = None,
+) -> Dict[str, Any]:
+    """Generate and evaluate a GSM8K problem using ``model``."""
+    if dataset is None:
+        dataset = load_gsm8k_dataset()
+    problem = dataset[index]
+    completion = chat_completion(problem["question"], model=model, max_tokens=max_tokens)
+    raw = completion["message"]
+    answer = _extract_gsm8k_answer(raw)
+    correct = _extract_gsm8k_answer(problem["answer"])
+    passed = int(answer == correct)
+    return {
+        "raw": raw,
+        "answer": answer,
+        "is_valid": answer is not None,
+        "passed": passed,
+        "total": 1,
+        "cost": completion.get("cost", {}),
+    }
+
+
+def run_gsm8k_until_budget(
+    model: str,
+    budget: float,
+    log_dir: Path = Path("logs"),
+    max_tokens: int = 1024,
+    show_progress: bool = False,
+) -> Dict[str, Any]:
+    """Run GSM8K problems until ``budget`` (USD) is exhausted."""
+    dataset = load_gsm8k_dataset()
+    tasks = list(range(len(dataset)))
+    unsolved = tasks.copy()
+    attempts = 0
+    total_cost = 0.0
+    solved = set()
+    problem_stats = {idx: {"attempts": 0, "correct": False} for idx in tasks}
+    log_dir.mkdir(parents=True, exist_ok=True)
+    idx = 0
+
+    progress = None
+    if show_progress:
+        progress = tqdm(total=budget, unit="USD", desc="Budget spent")
+
+    try:
+        while unsolved and total_cost < budget:
+            problem_idx = unsolved[idx]
+            attempts += 1
+            result = run_gsm8k_task(
+                problem_idx, model=model, max_tokens=max_tokens, dataset=dataset
+            )
+            problem_stats[problem_idx]["attempts"] += 1
+            correct = result["passed"] == result["total"]
+            problem_stats[problem_idx]["correct"] = (
+                problem_stats[problem_idx]["correct"] or correct
+            )
+            cost = float(result.get("cost", {}).get("total", 0.0))
+            total_cost += cost
+            if progress is not None:
+                progress.update(min(cost, budget - progress.n))
+
+            log_id = uuid.uuid4()
+            log_data = {
+                "id": str(log_id),
+                "model": model,
+                "index": problem_idx,
+                "response": result["raw"],
+                "correct": correct,
+                "cost": result.get("cost", {}),
+            }
+            log_file = log_dir / f"{log_id}.json"
+            with log_file.open("w") as fh:
+                json.dump(log_data, fh)
+
+            if correct:
+                solved.add(problem_idx)
                 unsolved.pop(idx)
                 if not unsolved:
                     break
