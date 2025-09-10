@@ -4,12 +4,12 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from .runner import run_humaneval_until_budget
+from .runner import run_gsm8k_until_budget, run_humaneval_until_budget
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Run HumanEval tasks with an LLM until a budget is exhausted"
+        description="Run evaluation tasks with an LLM until a budget is exhausted"
     )
     parser.add_argument("model", help="Model name to evaluate")
     parser.add_argument("budget", type=float, help="Budget in USD")
@@ -21,14 +21,28 @@ def main() -> None:
         choices=["simple", "full"],
         help="Include analytics output (simple or full)",
     )
+    parser.add_argument(
+        "--dataset",
+        choices=["humaneval", "gsm8k"],
+        default="humaneval",
+        help="Dataset to evaluate",
+    )
     args = parser.parse_args()
 
-    summary = run_humaneval_until_budget(
-        model=args.model,
-        budget=args.budget,
-        log_dir=Path(args.log_dir),
-        show_progress=True,
-    )
+    if args.dataset == "humaneval":
+        summary = run_humaneval_until_budget(
+            model=args.model,
+            budget=args.budget,
+            log_dir=Path(args.log_dir),
+            show_progress=True,
+        )
+    else:
+        summary = run_gsm8k_until_budget(
+            model=args.model,
+            budget=args.budget,
+            log_dir=Path(args.log_dir),
+            show_progress=True,
+        )
     print(
         f"Attempts: {summary['attempts']}\n"
         f"Correct: {summary['correct']}\n"

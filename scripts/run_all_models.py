@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Run HumanEval for every model listed in ``LLM_COSTS``.
+"""Run HumanEval for one or more models listed in ``LLM_COSTS``.
 
 Each model is evaluated with ``run_humaneval_until_budget`` and logs are
 stored under ``logs/humaneval/<model>/<run-id>`` where ``run-id`` is a
-UTC timestamp.  After each run a ``summary.json`` and ``metadata.json``
-are written alongside the per-attempt JSON logs produced by the runner.
-An ``attempts.jsonl`` file is also generated to provide a compact view of
-all attempts in chronological order.
+UTC timestamp. After each run a ``summary.json`` and ``metadata.json`` are
+written alongside the per-attempt JSON logs produced by the runner. An
+``attempts.jsonl`` file is also generated to provide a compact view of all
+attempts in chronological order.
 """
 from __future__ import annotations
 
@@ -55,7 +55,9 @@ def _run_model(model: str, budget: float, base_dir: Path, show_progress: bool) -
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run all models in LLM_COSTS")
+    parser = argparse.ArgumentParser(
+        description="Run HumanEval for models listed in LLM_COSTS"
+    )
     parser.add_argument(
         "--budget",
         type=float,
@@ -73,10 +75,22 @@ def main() -> None:
         default=1,
         help="Number of models to evaluate concurrently",
     )
+    parser.add_argument(
+        "--models",
+        nargs="+",
+        metavar="MODEL",
+        help="Specific models to evaluate (default: all models in LLM_COSTS)",
+    )
     args = parser.parse_args()
 
     base_dir = Path(args.log_dir)
-    models = list(LLM_COSTS)
+    if args.models:
+        unknown = [m for m in args.models if m not in LLM_COSTS]
+        if unknown:
+            parser.error(f"Unknown model(s): {', '.join(unknown)}")
+        models = args.models
+    else:
+        models = list(LLM_COSTS)
 
     if args.threads <= 1:
         for model in models:
